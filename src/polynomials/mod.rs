@@ -90,6 +90,15 @@ impl<F: Float> Polynomial<F> {
     }
 
     #[must_use]
+    pub fn from_mul(a: &Self, b: &Self) -> Self {
+        let mut out = vec![F::zero(); a.0.len() + b.0.len() - 1];
+
+        conv(&a.0, &b.0, &mut out);
+
+        Self::new(out)
+    }
+
+    #[must_use]
     pub fn get_terms(&self) -> &[F] {
         &self.0
     }
@@ -192,7 +201,19 @@ impl<F: Float> Mul for Polynomial<F> {
 
         conv(&self.0, &rhs.0, &mut out);
 
-        Self::new(out)
+        Self::Output::new(out)
+    }
+}
+
+impl<F: Float> Mul for &Polynomial<F> {
+    type Output = Polynomial<F>;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        let mut out = vec![F::zero(); self.0.len() + rhs.0.len() - 1];
+
+        conv(&self.0, &rhs.0, &mut out);
+
+        Self::Output::new(out)
     }
 }
 

@@ -64,9 +64,8 @@ where
         // gains to calculate
         let mut future_gains = BTreeSet::new();
 
-        // TODO Possibly these two clones are bad for performance
-        let intersections_poly = self.poly_a.derivative() * self.poly_b.clone()
-            - self.poly_b.derivative() * self.poly_a.clone();
+        let intersections_poly =
+            &self.poly_a.derivative() * &self.poly_b - &self.poly_b.derivative() * &self.poly_a;
 
         let mut intersections = vec![Complex::from(F::zero()); intersections_poly.order()];
         intersections_poly.find_roots(&mut intersections, prec);
