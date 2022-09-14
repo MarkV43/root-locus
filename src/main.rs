@@ -1,10 +1,7 @@
 use std::time::Instant;
 
 use macroquad::prelude::*;
-use rust_lab::{
-    polynomials::{root_locus::RootLocus, Polynomial},
-    NotNanFloat,
-};
+use rust_lab::polynomials::{root_locus::RootLocus, Polynomial};
 
 #[macroquad::main("BasicShapes")]
 async fn main() {
@@ -28,32 +25,25 @@ async fn main() {
 
         let all_roots = rl.get_roots();
 
-        // Recalculate these
+        let mut min_re = f32::INFINITY;
+        let mut min_im = f32::INFINITY;
+        let mut max_re = -f32::INFINITY;
+        let mut max_im = -f32::INFINITY;
 
-        let min_re = all_roots
-            .iter()
-            .map(|x| NotNanFloat::new(x.re))
-            .min()
-            .unwrap()
-            .0;
-        let min_im = all_roots
-            .iter()
-            .map(|x| NotNanFloat::new(x.im))
-            .min()
-            .unwrap()
-            .0;
-        let max_re = all_roots
-            .iter()
-            .map(|x| NotNanFloat::new(x.re))
-            .max()
-            .unwrap()
-            .0;
-        let max_im = all_roots
-            .iter()
-            .map(|x| NotNanFloat::new(x.im))
-            .max()
-            .unwrap()
-            .0;
+        for x in all_roots.iter() {
+            if x.re < min_re {
+                min_re = x.re;
+            }
+            if x.re > max_re {
+                max_re = x.re;
+            }
+            if x.im < min_im {
+                min_im = x.im;
+            }
+            if x.im > max_im {
+                max_im = x.im;
+            }
+        }
 
         let width = screen_width();
         let height = screen_height();
