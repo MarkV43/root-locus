@@ -1,8 +1,11 @@
 use num::{Complex, Float, Num, ToPrimitive, Zero};
 use std::{
+    fmt::{Debug, Display},
     iter::{self, repeat},
     ops::{Add, Mul, Sub},
 };
+
+use self::roots::PolynomialRoot;
 
 pub mod root_locus;
 pub mod roots;
@@ -25,25 +28,21 @@ pub fn conv<N: Num + Copy>(a: &[N], b: &[N], out: &mut [N]) {
     }
 }
 
+/// Removes trailing zeros from the end of a slice by returning another slice
+#[allow(dead_code)]
+fn remove_trailing_zeros<F: Zero>(vec: &[F]) -> &[F] {
+    &vec[..=vec.iter().rposition(|x| !x.is_zero()).unwrap_or(0)]
+}
+
+/// Removes trailing zeros from the end of a vector by mutating it
+pub fn remove_trailing_zeros_vec<F: Zero>(vec: &mut Vec<F>) {
+    vec.truncate(vec.iter().rposition(|x| !x.is_zero()).unwrap_or(0) + 1);
+}
+
 impl<F: Float> Polynomial<F> {
-    /// Removes trailing zeros from the end of a slice by returning another slice
-    #[allow(dead_code)]
-    fn remove_trailing_zeros(vec: &[F]) -> &[F] {
-        vec.iter()
-            .rposition(|x| !x.is_zero())
-            .map_or(vec, |last| &vec[..=last])
-    }
-
-    /// Removes trailing zeros from the end of a vector by mutating it
-    fn remove_trailing_zeros_vec(vec: &mut Vec<F>) {
-        if let Some(last) = vec.iter().rposition(|x| !x.is_zero()) {
-            vec.truncate(last + 1);
-        }
-    }
-
     #[must_use]
     pub fn new(mut vec: Vec<F>) -> Self {
-        Self::remove_trailing_zeros_vec(&mut vec);
+        remove_trailing_zeros_vec(&mut vec);
         Self(vec)
     }
 
@@ -52,7 +51,7 @@ impl<F: Float> Polynomial<F> {
     /// P.S.: If complex roots are given, they must have their complex conjugate too, else the computation will fail
     #[must_use]
     #[allow(clippy::trait_duplication_in_bounds)]
-    pub fn from_roots<I>(gain: F, roots: &[I]) -> Self
+    pub fn from_real_roots<I>(gain: F, roots: &[I]) -> Self
     where
         I: Num + Clone,
         Complex<F>: From<I> + From<F> + Clone,
@@ -68,6 +67,42 @@ impl<F: Float> Polynomial<F> {
         }
 
         Self::new(out.iter().map(|x| x.re).collect::<Vec<_>>())
+    }
+
+    #[must_use]
+    pub fn from_roots(gain: F, roots: &[PolynomialRoot<F>]) -> Self {
+        let mut out = vec![F::zero(); roots.len() * 2 + 1];
+        out[0] = gain;
+        let mut out_copy = out.clone();
+        let mut i = 0;
+
+        for root in roots.iter() {
+            match root {
+                &PolynomialRoot::RealSingle(r) => {
+                    conv(&out_copy[..=i], &[-r, F::one()], &mut out);
+                    i += 1;
+                }
+                &PolynomialRoot::ComplexPair(c) => {
+                    // (x - a - b i) * (x - a + b i)
+                    // x² - a x + b i x - a x + a² - a b i - b i x + a b i + b²
+                    //            ^^^^^              ^^^^^   ^^^^^   ^^^^^
+                    // x² - (2 a) x + (a² + b²)
+                    conv(
+                        &out_copy[..=i],
+                        &[
+                            c.re.powi(2) + c.im.powi(2),
+                            F::from(-2.0).unwrap() * c.re,
+                            F::one(),
+                        ],
+                        &mut out,
+                    );
+                    i += 2;
+                }
+            }
+            out_copy.clone_from_slice(&out);
+        }
+
+        Self::new(out)
     }
 
     /// Creates a polynomial from the sum `x * a + y * b`
@@ -166,6 +201,19 @@ impl<F: Float> Polynomial<F> {
     // TODO: implement Polynomial methods
 }
 
+impl<F: Float + Display> Display for Polynomial<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let terms = remove_trailing_zeros(self.get_terms());
+        for (i, term) in terms.iter().enumerate().rev() {
+            write!(f, "{} x^{}", term, i)?;
+            if i > 0 {
+                write!(f, " + ")?;
+            }
+        }
+        Ok(())
+    }
+}
+
 // TODO: implement division
 
 impl<F: Float> Add for Polynomial<F> {
@@ -252,7 +300,7 @@ mod tests {
         // x^2 - 3 x + 2
         let poly = Polynomial(vec![2.0, -3.0, 1.0]);
 
-        assert_eq!(Polynomial::from_roots(1.0, &roots), poly);
+        assert_eq!(Polynomial::from_real_roots(1.0, &roots), poly);
     }
 
     #[test]
@@ -317,28 +365,34 @@ mod tests {
     }
 
     #[test]
-    fn remove_trailing_zeros() {
+    fn remove_trailing_zeros_works() {
         let a = vec![0.0, 2.0, 3.0, 0.0, 4.0, 0.0, 0.0];
-
-        let b = Polynomial::remove_trailing_zeros(&a);
+        let b = remove_trailing_zeros(&a);
 
         assert_eq!(b, &[0.0, 2.0, 3.0, 0.0, 4.0]);
 
-        let c = Polynomial::remove_trailing_zeros(b);
-
+        let c = remove_trailing_zeros(b);
         assert_eq!(c, &[0.0, 2.0, 3.0, 0.0, 4.0]);
+
+        let d = vec![0.0, 0.0, 0.0];
+        let e = remove_trailing_zeros(&d);
+
+        assert_eq!(e, &[0.0]);
     }
 
     #[test]
-    fn remove_trailing_zeros_vec() {
+    fn remove_trailing_zeros_vec_works() {
         let mut a = vec![0.0, 2.0, 3.0, 0.0, 4.0, 0.0, 0.0];
 
-        Polynomial::remove_trailing_zeros_vec(&mut a);
-
+        remove_trailing_zeros_vec(&mut a);
         assert_eq!(a, vec![0.0, 2.0, 3.0, 0.0, 4.0]);
 
-        Polynomial::remove_trailing_zeros(&mut a);
-
+        remove_trailing_zeros_vec(&mut a);
         assert_eq!(a, vec![0.0, 2.0, 3.0, 0.0, 4.0]);
+
+        let mut b = vec![0.0, 0.0, 0.0];
+
+        remove_trailing_zeros_vec(&mut b);
+        assert_eq!(b, vec![0.0]);
     }
 }

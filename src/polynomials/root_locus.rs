@@ -72,9 +72,10 @@ where
 
         intersections
             .into_iter()
-            .map(|x| self.compute_gain(x))
+            .map(|x| NotNanFloat::new(self.compute_gain(x).re))
+            .filter(|x| x.0.is_sign_positive())
             .for_each(|x| {
-                future_gains.insert(NotNanFloat::new(x.re));
+                future_gains.insert(x);
             });
 
         // drop(intersections);
@@ -84,6 +85,8 @@ where
             future_gains.insert(NotNanFloat::new(k));
             k = k * interval;
         }
+
+        // println!("{:?}", future_gains.first().unwrap().0);
 
         // Given the size of future_gains, resize self.roots again
         self.roots.resize(

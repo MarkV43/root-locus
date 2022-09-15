@@ -3,6 +3,17 @@ use approx::{AbsDiffEq, RelativeEq};
 use num::{Complex, Float, One, Zero};
 use rand::{distributions::Standard, prelude::*};
 
+pub enum PolynomialRoot<F> {
+    RealSingle(F),
+    ComplexPair(Complex<F>),
+}
+
+// impl<F> PolynomialRoot<F> {
+//     pub fn to_complex(self) -> Complex<F> {
+
+//     }
+// }
+
 /// An implementation for finding the complex roots of a univariate polynomial
 ///
 /// As the main objective of this trait is to be used in real-time rendering,
@@ -89,8 +100,8 @@ impl<F: Float> RootFinding<F> for Polynomial<F> {
         R: RngCore,
     {
         for x in initial_guess.iter_mut() {
-            let r = Complex::from(F::from(0.1).unwrap()) * Complex::new(rng.gen(), rng.gen());
-            *x = r * Complex::<F>::one() + *x;
+            let r = Complex::from(F::from(0.01).unwrap()) * Complex::new(rng.gen(), rng.gen());
+            *x = r + *x;
         }
 
         self.find_roots_from(initial_guess, prec)

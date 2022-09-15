@@ -1,6 +1,7 @@
 #![deny(clippy::complexity, clippy::style, clippy::perf)]
 #![warn(clippy::pedantic, clippy::nursery)]
 #![allow(clippy::missing_panics_doc)]
+#![feature(map_first_last)]
 
 use num::Float;
 
@@ -27,9 +28,7 @@ impl<F: Float> PartialOrd for NotNanFloat<F> {
 
 impl<F: Float> Ord for NotNanFloat<F> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match self.partial_cmp(other) {
-            Some(x) => x,
-            None => panic!("NotNanFloat was NaN"),
-        }
+        self.partial_cmp(other)
+            .map_or_else(|| panic!("NotNanFloat was NaN"), |x| x)
     }
 }
