@@ -8,15 +8,6 @@ pub enum PolynomialRoot<F> {
     ComplexPair(Complex<F>),
 }
 
-impl<F: Num + Clone> PolynomialRoot<F> {
-    pub fn as_complex(&self) -> Complex<F> {
-        match self {
-            Self::RealSingle(x) => Complex::from(x.clone()),
-            Self::ComplexPair(z) => z.clone(),
-        }
-    }
-}
-
 /// An implementation for finding the complex roots of a univariate polynomial
 ///
 /// As the main objective of this trait is to be used in real-time rendering,

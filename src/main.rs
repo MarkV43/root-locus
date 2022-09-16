@@ -44,8 +44,11 @@ async fn main() {
     let mut oy = 300.0;
 
     let mut mode = Mode::Zoom;
-    let mut interval = 1.01;
+    let mut interval = 0.01;
     let mut precision = 1e-6;
+    let mut fps = true;
+    let mut val_fps = 0;
+    let mut last_fps_time = Instant::now();
 
     loop {
         i += 1;
@@ -58,7 +61,7 @@ async fn main() {
 
         let mut rl = RootLocus::new(poly_a.clone(), poly_b.clone());
 
-        rl.calculate_all(precision, interval, 0.01, 1000.0);
+        rl.calculate_all(precision, 1.0 + interval, 0.01, 1000.0);
 
         let all_roots = rl.get_roots();
 
@@ -88,6 +91,9 @@ async fn main() {
                 Mode::Interval => Mode::Precision,
                 Mode::Precision => Mode::Zoom,
             }
+        }
+        if is_key_pressed(KeyCode::F) {
+            fps = !fps;
         }
 
         // Scale calculation
@@ -130,11 +136,8 @@ async fn main() {
                 }
                 Mode::Interval => {
                     if wheel != 0 {
-                        let val = 1.001_f32.powi(wheel);
+                        let val = 1.1_f32.powi(wheel);
                         interval *= val;
-                        if interval <= 1.0 {
-                            interval = 1.005
-                        }
                     }
                 }
                 Mode::Precision => {
@@ -188,7 +191,12 @@ async fn main() {
             } else {
                 for (i, root) in a_roots.iter_mut().chain(b_roots.iter_mut()).enumerate() {
                     // Check distance
-                    let dist_sqr = (root.as_complex() - comp_mouse).norm_sqr();
+                    let dist_sqr = match *root {
+                        PolynomialRoot::RealSingle(r) => (Complex::from(r) - comp_mouse).norm_sqr(),
+                        PolynomialRoot::ComplexPair(c) => (c - comp_mouse)
+                            .norm_sqr()
+                            .min((c.conj() - comp_mouse).norm_sqr()),
+                    };
 
                     if dist_sqr > 100.0 / (sx * sx) {
                         continue;
@@ -325,7 +333,11 @@ async fn main() {
         match mode {
             Mode::Interval => {
                 draw_text(
-                    &format!("Interval: {:.4}", interval),
+                    &format!(
+                        "Interval: {}\t\tPoints: {}",
+                        interval,
+                        all_roots.len() / rl.get_branches()
+                    ),
                     5.0,
                     screen_height() - 15.0,
                     30.0,
@@ -334,7 +346,7 @@ async fn main() {
             }
             Mode::Precision => {
                 draw_text(
-                    &format!("Precision: {}", precision),
+                    &format!("Precision: {:+e}", precision),
                     5.0,
                     screen_height() - 15.0,
                     30.0,
@@ -342,6 +354,13 @@ async fn main() {
                 );
             }
             _ => {}
+        }
+        if fps {
+            if last_fps_time.elapsed().as_millis() >= 500 {
+                val_fps = get_fps();
+                last_fps_time = Instant::now();
+            }
+            draw_text(&format!("FPS: {}", val_fps), 5.0, 20.0, 30.0, WHITE);
         }
 
         if i % 60 == 0 {
