@@ -77,12 +77,12 @@ impl<F: Float> Polynomial<F> {
         let mut i = 0;
 
         for root in roots.iter() {
-            match root {
-                &PolynomialRoot::RealSingle(r) => {
+            match *root {
+                PolynomialRoot::RealSingle(r) => {
                     conv(&out_copy[..=i], &[-r, F::one()], &mut out);
                     i += 1;
                 }
-                &PolynomialRoot::ComplexPair(c) => {
+                PolynomialRoot::ComplexPair(c) => {
                     // (x - a - b i) * (x - a + b i)
                     // x² - a x + b i x - a x + a² - a b i - b i x + a b i + b²
                     //            ^^^^^              ^^^^^   ^^^^^   ^^^^^

@@ -1,6 +1,6 @@
 use super::Polynomial;
 use approx::{AbsDiffEq, RelativeEq};
-use num::{Complex, Float, One, Zero};
+use num::{Complex, Float, Num, One, Zero};
 use rand::{distributions::Standard, prelude::*};
 
 pub enum PolynomialRoot<F> {
@@ -8,11 +8,14 @@ pub enum PolynomialRoot<F> {
     ComplexPair(Complex<F>),
 }
 
-// impl<F> PolynomialRoot<F> {
-//     pub fn to_complex(self) -> Complex<F> {
-
-//     }
-// }
+impl<F: Num + Clone> PolynomialRoot<F> {
+    pub fn as_complex(&self) -> Complex<F> {
+        match self {
+            Self::RealSingle(x) => Complex::from(x.clone()),
+            Self::ComplexPair(z) => z.clone(),
+        }
+    }
+}
 
 /// An implementation for finding the complex roots of a univariate polynomial
 ///
