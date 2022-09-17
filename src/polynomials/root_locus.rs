@@ -1,10 +1,10 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fmt::Debug,
+    fmt::{Debug, Display},
 };
 
 use num::{Complex, Float};
-use rand::{distributions::Standard, prelude::Distribution, rngs::StdRng, SeedableRng};
+use rand::{distributions::Standard, prelude::Distribution};
 
 use crate::{
     polynomials::{roots::RootFinding, Polynomial},
@@ -21,7 +21,7 @@ pub struct RootLocus<F: Float> {
     branches: usize,
 }
 
-impl<F: Float + Debug> RootLocus<F>
+impl<F: Float + Display + Debug> RootLocus<F>
 where
     Standard: Distribution<F>,
 {
@@ -52,7 +52,7 @@ where
         -self.poly_a.eval_complex(position) / self.poly_b.eval_complex(position)
     }
 
-    pub fn calculate_all(&mut self, prec: F, interval: F, min_gain: F, max_gain: F) {
+    pub fn calculate_all(&mut self, prec: F, interval: F, min_gain: F, max_gain: F, rng: &[F]) {
         // Add the first point
         self.roots.resize(self.branches, Complex::from(F::zero()));
         // First of all calculate for k == 0.0
@@ -64,15 +64,27 @@ where
         // gains to calculate
         let mut future_gains = BTreeSet::new();
 
+        future_gains.insert(NotNanFloat::new(F::from(1e12).unwrap()));
+
         let intersections_poly =
             &self.poly_a.derivative() * &self.poly_b - &self.poly_b.derivative() * &self.poly_a;
 
         let mut intersections = vec![Complex::from(F::zero()); intersections_poly.order()];
         intersections_poly.find_roots(&mut intersections, prec);
 
+        if intersections.iter().any(|x| x.re.is_nan() || x.im.is_nan()) {
+            println!(
+                "\n########## NaN ##########\nNaN: {:.12?}\nA: {:?}\nB: {:?}\nI: {:?}\n\n",
+                intersections_poly, self.poly_a, self.poly_b, intersections
+            );
+        }
+
         intersections
-            .into_iter()
-            .map(|x| NotNanFloat::new(self.compute_gain(x).re))
+            .iter()
+            .cloned()
+            .map(|x| self.compute_gain(x).re)
+            .filter(|x| !x.is_nan())
+            .map(|x| NotNanFloat::new(x))
             .filter(|x| x.0.is_sign_positive())
             .for_each(|x| {
                 future_gains.insert(x);
@@ -97,24 +109,18 @@ where
         let mut old_roots = vec![Complex::from(F::zero()); self.branches];
         old_roots.copy_from_slice(&self.roots[..self.branches]);
 
-        let mut rng = StdRng::seed_from_u64(4343);
+        // let mut rng = StdRng::seed_from_u64(4343);
         // let mut rng = thread_rng();
 
         for (i, gain) in future_gains.iter().enumerate() {
             let poly = Polynomial::from_sum(F::one(), &self.poly_a, gain.0, &self.poly_b);
 
-            poly.find_roots_from_rand(&mut old_roots, prec, &mut rng);
+            // poly.find_roots_from_rand(&mut old_roots, prec, &mut rng);
+            poly.find_roots_from_rng(&mut old_roots, prec, rng);
 
             self.roots[(i + 1) * self.branches..(i + 2) * self.branches]
                 .copy_from_slice(&old_roots);
         }
-
-        // println!("{:#?}", self.roots);
-
-        // println!("Future gains: {}", future_gains.len());
-
-        // let mut gain = F::from(10.0).unwrap(); // Geometric mean between 0.01 and 10_000
-        // future_gains.
 
         // Calculate for infinite gain
         // We can approximate all roots and calculate the exact location of the finite roots

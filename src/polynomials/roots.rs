@@ -1,6 +1,8 @@
+use std::fmt::Debug;
+
 use super::Polynomial;
 use approx::{AbsDiffEq, RelativeEq};
-use num::{Complex, Float, Num, One, Zero};
+use num::{Complex, Float, One, Zero};
 use rand::{distributions::Standard, prelude::*};
 
 pub enum PolynomialRoot<F> {
@@ -37,6 +39,10 @@ pub trait RootFinding<F: Float> {
         Standard: Distribution<F>,
         R: RngCore;
 
+    fn find_roots_from_rng(&self, initial_guess: &mut [Complex<F>], prec: F, rng: &[F]) -> usize
+    where
+        Standard: Distribution<F>;
+
     /// Determines lower and upper bounds for the module of the polynomial roots
     ///
     /// Time complexity: same as `determine_max_bound`, which is called twice
@@ -64,7 +70,7 @@ pub trait RootFinding<F: Float> {
     }
 }
 
-impl<F: Float> RootFinding<F> for Polynomial<F> {
+impl<F: Float + Debug> RootFinding<F> for Polynomial<F> {
     fn find_roots(&self, output: &mut [Complex<F>], prec: F) -> usize {
         debug_assert_eq!(self.order(), output.len());
 
@@ -101,6 +107,21 @@ impl<F: Float> RootFinding<F> for Polynomial<F> {
         self.find_roots_from(initial_guess, prec)
     }
 
+    fn find_roots_from_rng(&self, initial_guess: &mut [Complex<F>], prec: F, rng: &[F]) -> usize
+    where
+        Standard: Distribution<F>,
+    {
+        let t = rng.len();
+
+        for (i, x) in initial_guess.iter_mut().enumerate() {
+            let r = Complex::from(F::from(0.01).unwrap())
+                * Complex::new(rng[(2 * i) % t], rng[(2 * i + 1) % t]);
+            *x = r + *x;
+        }
+
+        self.find_roots_from(initial_guess, prec)
+    }
+
     fn find_roots_from(&self, guesses: &mut [Complex<F>], prec: F) -> usize {
         let mut max_off = F::infinity();
         let mut count = 0;
@@ -112,7 +133,9 @@ impl<F: Float> RootFinding<F> for Polynomial<F> {
             let mut offsets = vec![Complex::<F>::zero(); guesses.len()];
 
             for (k, off) in offsets.iter_mut().enumerate() {
-                let frac = self.eval_complex(guesses[k]) / self.eval_complex_derivative(guesses[k]);
+                let a = self.eval_complex(guesses[k]);
+                let b = self.eval_complex_derivative(guesses[k]);
+                let frac = a * b.inv();
 
                 let mut sum: Complex<F> = Complex::<F>::zero();
                 for (j, guess) in guesses.iter().enumerate() {
@@ -121,12 +144,25 @@ impl<F: Float> RootFinding<F> for Polynomial<F> {
                     }
                 }
 
+                #[cfg(test)]
+                {
+                    println!("{:?} : {:?}", a, b);
+                    println!("1/b = {:?}", Complex::<F>::one() / b);
+                    println!("1/b = {:?}", a * (Complex::<F>::one() / b));
+                    println!("a/b = {:?}", frac);
+                }
+
                 *off = frac / (Complex::<F>::one() - frac * sum);
 
                 let norm = off.norm_sqr();
                 if norm > max_off {
                     max_off = norm;
                 }
+            }
+
+            #[cfg(test)]
+            {
+                println!("{:?}", offsets);
             }
 
             guesses
@@ -177,7 +213,7 @@ impl<F: AbsDiffEq<Epsilon = F> + RelativeEq + Float> RelativeEq for Root<F> {
 #[cfg(test)]
 mod tests {
     use approx::assert_abs_diff_eq;
-    use num::complex::Complex64;
+    use num::complex::{Complex32, Complex64};
 
     use super::*;
 
@@ -232,5 +268,59 @@ mod tests {
         out.into_iter().zip(expected).for_each(|(a, b)| {
             assert_abs_diff_eq!(Root(a), Root(b), epsilon = 1e-6);
         });
+    }
+
+    #[test]
+    fn find_roots_1() {
+        // 1 x^8 + 16.214523 x^7 + 99.22398 x^6 + 315.04803 x^5 + 580.4285 x^4 +
+        // 642.7921 x^3 + 420.23093 x^2 + 148.0922 x^1 + 21.712877 x^0
+        let terms = vec![
+            17.459405899048,
+            99.495834350586,
+            400.352294921875,
+            723.051147460938,
+            746.077880859375,
+            429.666961669922,
+            131.812713623047,
+            19.517898559570,
+            1.000000000000,
+        ];
+
+        let mut out = vec![Complex32::zero(); 8];
+
+        Polynomial::new(terms).find_roots(&mut out, 1e-6);
+
+        assert!(!out.iter().any(|x| x.is_nan()));
+    }
+
+    #[test]
+    fn find_roots_2() {
+        let terms = vec![
+            20.418222, 156.24036, 484.42987, 777.31366, 710.4121, 376.51474, 112.86154, 17.351707,
+            1.0,
+        ];
+
+        let mut out = vec![Complex32::zero(); 8];
+
+        Polynomial::new(terms).find_roots(&mut out, 1e-6);
+
+        assert!(!out.iter().any(|x| x.is_nan()));
+    }
+
+    #[test]
+    fn find_roots_3() {
+        let at = vec![0.0, 0.7103154, 2.7176692, 4.3875217, 3.2997167, 1.0];
+        let bt = vec![28.745289, 46.750034, 29.540403, 8.675855, 1.0];
+
+        let pa = Polynomial::new(at);
+        let pb = Polynomial::new(bt);
+
+        let int = &pa.derivative() * &pb - &pb.derivative() * &pa;
+
+        let mut out = vec![Complex32::zero(); int.order()];
+
+        int.find_roots(&mut out, 1e-6);
+
+        assert!(!out.iter().any(|x| x.is_nan()));
     }
 }

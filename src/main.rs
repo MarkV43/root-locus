@@ -1,10 +1,11 @@
 #![feature(let_chains)]
-
-use std::time::Instant;
+mod rng;
 
 use macroquad::prelude::*;
 use num::{Complex, ToPrimitive};
+use rng::generate_rng;
 use rust_lab::polynomials::{root_locus::RootLocus, roots::PolynomialRoot, Polynomial};
+use std::time::Instant;
 
 enum Mode {
     Zoom,
@@ -18,7 +19,7 @@ async fn main() {
         RED, GREEN, BLUE, YELLOW, PINK, BROWN, BEIGE, LIME, LIGHTGRAY, PURPLE, ORANGE, MAGENTA,
     ];
 
-    let mut i = 0;
+    let rng = generate_rng(1_000);
 
     let mut tot = 0;
 
@@ -48,20 +49,19 @@ async fn main() {
     let mut precision = 1e-6;
     let mut fps = true;
     let mut val_fps = 0;
-    let mut last_fps_time = Instant::now();
+    let mut last_update_time = Instant::now();
+    let mut show_load = false;
+    let mut val_load = 0;
 
     loop {
-        i += 1;
         let t1 = Instant::now();
 
         let poly_a = Polynomial::from_roots(1.0f32, &a_roots);
         let poly_b = Polynomial::from_roots(1.0, &b_roots);
 
-        // println!("A(x) = {}\nB(x) = {}", poly_a, poly_b);
-
         let mut rl = RootLocus::new(poly_a.clone(), poly_b.clone());
 
-        rl.calculate_all(precision, 1.0 + interval, 0.01, 1000.0);
+        rl.calculate_all(precision, 1.0 + interval, 0.01, 1000.0, &rng);
 
         let all_roots = rl.get_roots();
 
@@ -94,6 +94,9 @@ async fn main() {
         }
         if is_key_pressed(KeyCode::F) {
             fps = !fps;
+        }
+        if is_key_pressed(KeyCode::L) {
+            show_load = !show_load;
         }
 
         // Scale calculation
@@ -171,18 +174,16 @@ async fn main() {
                     &mut b_roots[r - a_roots.len()]
                 };
                 if my == 0.0 {
-                    match root {
-                        &mut PolynomialRoot::RealSingle(ref mut rx) => *rx = mx,
-                        &mut PolynomialRoot::ComplexPair(_) => {
-                            *root = PolynomialRoot::RealSingle(mx)
-                        }
+                    match *root {
+                        PolynomialRoot::RealSingle(ref mut rx) => *rx = mx,
+                        PolynomialRoot::ComplexPair(_) => *root = PolynomialRoot::RealSingle(mx),
                     }
                 } else {
-                    match root {
-                        &mut PolynomialRoot::RealSingle(_) => {
+                    match *root {
+                        PolynomialRoot::RealSingle(_) => {
                             *root = PolynomialRoot::ComplexPair(comp_mouse)
                         }
-                        &mut PolynomialRoot::ComplexPair(ref mut c) => {
+                        PolynomialRoot::ComplexPair(ref mut c) => {
                             c.re = mx;
                             c.im = my;
                         }
@@ -203,18 +204,18 @@ async fn main() {
                     }
 
                     if my == 0.0 {
-                        match root {
-                            &mut PolynomialRoot::RealSingle(ref mut rx) => *rx = mx,
-                            &mut PolynomialRoot::ComplexPair(_) => {
+                        match *root {
+                            PolynomialRoot::RealSingle(ref mut rx) => *rx = mx,
+                            PolynomialRoot::ComplexPair(_) => {
                                 *root = PolynomialRoot::RealSingle(mx)
                             }
                         }
                     } else {
-                        match root {
-                            &mut PolynomialRoot::RealSingle(_) => {
+                        match *root {
+                            PolynomialRoot::RealSingle(_) => {
                                 *root = PolynomialRoot::ComplexPair(comp_mouse)
                             }
-                            &mut PolynomialRoot::ComplexPair(ref mut c) => {
+                            PolynomialRoot::ComplexPair(ref mut c) => {
                                 c.re = mx;
                                 c.im = my;
                             }
@@ -233,13 +234,23 @@ async fn main() {
 
         if let Some(code) = last_key {
             filter = match code {
+                KeyCode::Key0 => None,
                 KeyCode::Key1 => Some(0),
                 KeyCode::Key2 => Some(1),
                 KeyCode::Key3 => Some(2),
                 KeyCode::Key4 => Some(3),
                 KeyCode::Key5 => Some(4),
-                KeyCode::Key0 => None,
+                KeyCode::Key6 => Some(5),
+                KeyCode::Key7 => Some(6),
+                KeyCode::Key8 => Some(7),
+                KeyCode::Key9 => Some(8),
                 _ => filter,
+            };
+
+            if let Some(x) = filter {
+                if x + 1 > rl.get_branches() {
+                    filter = None;
+                }
             }
         }
 
@@ -355,22 +366,25 @@ async fn main() {
             }
             _ => {}
         }
-        if fps {
-            if last_fps_time.elapsed().as_millis() >= 500 {
-                val_fps = get_fps();
-                last_fps_time = Instant::now();
-            }
-            draw_text(&format!("FPS: {}", val_fps), 5.0, 20.0, 30.0, WHITE);
+
+        if last_update_time.elapsed().as_millis() >= 500 {
+            val_fps = get_fps();
+            val_load = tot / 5_000_000;
+            tot = 0;
+            last_update_time = Instant::now();
         }
 
-        if i % 60 == 0 {
-            println!(
-                "{:.4} % \t for {} points",
-                tot as f32 / 1_000_000_000_f32 * 100.0,
-                all_roots.len() / rl.get_branches()
+        if fps {
+            draw_text(&format!("FPS: {}", val_fps), 5.0, 20.0, 30.0, WHITE);
+        }
+        if show_load {
+            draw_text(
+                &format!("Load: {}%", val_load),
+                screen_width() - 135.0,
+                20.0,
+                30.0,
+                WHITE,
             );
-            i = 0;
-            tot = 0;
         }
 
         next_frame().await
