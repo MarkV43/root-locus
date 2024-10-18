@@ -1,16 +1,31 @@
 [package]
 name = "rust-lab"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
+resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-approx = "0.5.1"
-macroquad = "0.3.24"
-num = "0.4.0"
-rand = "0.8.5"
+approx = "0.5"
+num = "0.4"
+rand = "0.8"
+macroquad = "0.4"
+wgpu = "22.1"
+pollster = "0.3"
+env_logger = "0.11"
+clap = { version = "4.5", features = ["derive"] }
+winit = { version = "0.29", features = ["rwh_05"] }
+bytemuck = { version = "1.19", features = ["derive"] }
 
 [profile.release]
 lto = "fat"
 strip = true
+
+[profile.dev]
+# Enable a small amount of optimization in the dev profile.
+opt-level = 1
+
+[profile.dev.package."*"]
+# Enable a large amount of optimization in the dev profile for dependencies.
+opt-level = 3

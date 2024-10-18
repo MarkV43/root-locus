@@ -1,7 +1,6 @@
 #![deny(clippy::complexity, clippy::style, clippy::perf)]
 #![warn(clippy::pedantic, clippy::nursery)]
 #![allow(clippy::missing_panics_doc)]
-#![feature(map_first_last)]
 
 use num::Float;
 
