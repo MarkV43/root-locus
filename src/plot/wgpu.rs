@@ -1,4 +1,8 @@
-use std::{io::{stdout, Write}, ops::Range, time::Instant};
+use std::{
+    io::{stdout, Write},
+    ops::Range,
+    time::Instant,
+};
 
 use wgpu::{include_wgsl, util::DeviceExt};
 use winit::{
@@ -9,12 +13,48 @@ use winit::{
 };
 
 const VSYNC: bool = false;
+pub const MAX_CURVE_COUNT: usize = 2;
+const MAX_CURVE_VERTICES: usize = 1024;
+
+const COLORS: [[f32; 3]; MAX_CURVE_COUNT] = [
+    [1.0, 0.0, 0.0], // Red
+    [0.0, 1.0, 0.0], // Green
+    // [0.0, 0.0, 1.0], // Blue
+    // [1.0, 1.0, 0.0], // Yellow
+    // [1.0, 0.0, 1.0], // Magenta
+    // [0.0, 1.0, 1.0], // Cyan
+    // [0.5, 0.0, 0.0], // Dark Red
+    // [0.0, 0.5, 0.0], // Dark Green
+    // [0.0, 0.0, 0.5], // Dark Blue
+    // [1.0, 0.5, 0.0], // Orange
+    // [0.5, 0.0, 0.5], // Purple
+    // [0.0, 0.5, 0.5], // Teal
+    // [0.8, 0.4, 0.0], // Brown
+    // [0.0, 0.4, 0.8], // Sky Blue
+    // [0.4, 0.8, 0.0], // Lime Green
+    // [0.8, 0.0, 0.4], // Pink
+    // [0.6, 0.3, 0.3], // Light Brown
+    // [0.3, 0.6, 0.3], // Light Green
+    // [0.3, 0.3, 0.6], // Light Blue
+    // [0.9, 0.7, 0.0], // Gold
+    // [0.7, 0.0, 0.9], // Violet
+    // [0.0, 0.7, 0.9], // Aquamarine
+    // [0.9, 0.0, 0.7], // Hot Pink
+    // [0.0, 0.9, 0.7], // Mint Green
+    // [0.7, 0.9, 0.0], // Chartreuse
+    // [0.9, 0.3, 0.3], // Salmon
+    // [0.3, 0.9, 0.3], // Spring Green
+    // [0.3, 0.3, 0.9], // Periwinkle
+    // [0.9, 0.9, 0.3], // Light Yellow
+    // [0.9, 0.3, 0.9], // Light Magenta
+    // [0.3, 0.9, 0.9], // Light Cyan
+    // [0.7, 0.5, 0.0], // Mustard
+];
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
     position: [f32; 2],
-    color: u32,
 }
 
 impl Vertex {
@@ -39,57 +79,53 @@ impl Vertex {
 }
 
 struct Curves {
-    vertices: Vec<Vertex>,
-    curve_indices: Vec<usize>,
+    vertices: Vec<Vertex>, // len: MAX_CURVE_COUNT * MAX_CURVE_VERTICES
+    vertex_count: u32,
+    curve_count: u32,
 }
 
 impl Curves {
-    fn get_indices(&self) -> Vec<u16> {
-        let nc = self.curve_indices.len();
-        let nv = self.vertices.len();
-        let n = (nv - nc) * 2;
-        let mut buffer = vec![0; n];
-        let mut p = 0;
-        let mut ind = 0;
-
-        for (i, b) in buffer.chunks_exact_mut(2).enumerate() {
-            b[0] = p;
-            b[1] = p + 1;
-            if ind + 1 < nc && self.curve_indices[ind + 1] <= i + 2 {
-                p += 2;
-                ind += 1;
-            } else {
-                p += 1;
+    fn get_indices(data: &mut [u32]) { // len: MAX_CURVE_COUNT * (MAX_CURVE_VERTICES - 1) * 2
+        debug_assert_eq!(data.len(), MAX_CURVE_COUNT * (MAX_CURVE_VERTICES - 1) * 2);
+        
+        for c in 0..MAX_CURVE_COUNT {
+            for v in 0..MAX_CURVE_VERTICES-1 {
+                data[(c * (MAX_CURVE_VERTICES-1) + v) * 2] = v as u32;
+                data[(c * (MAX_CURVE_VERTICES-1) + v) * 2 + 1] = v as u32 + 1;
             }
         }
-
-        buffer
     }
 
-    fn get_ranges(&self) -> Vec<Range<u32>> {
-        let nc = self.curve_indices.len();
-        let nv = self.vertices.len();
+    fn get_ranges(&self, data: &mut [Option<Range<u32>>]) {
+        debug_assert_eq!(data.len(), MAX_CURVE_COUNT);
 
-        let mut buffer = vec![0..0; nc];
+        for c in 0..MAX_CURVE_COUNT {
+            data[c] = if (c as u32) < self.curve_count {
+                let start = (c * MAX_CURVE_VERTICES) as u32;
+                let end = start + self.vertex_count;
+                Some(start..end)
+            } else {
+                None
+            }
+        }
+    }
 
-        let mut ind = self
-            .curve_indices
-            .iter()
-            .copied()
-            .chain(std::iter::once(nv));
-        let mut start = ind.next().unwrap() as u32;
-        let mut prev = start;
+    fn write(&mut self, data: &[Vec<Vertex>]) {
+        self.curve_count = data.len() as u32;
 
-        for i in 1..nc + 1 {
-            let end = ind.next().unwrap() as u32;
-            let diff = end - prev;
-            prev = end;
-            let end = start + (diff - 1) * 2;
-            buffer[i - 1] = start..end;
-            start = end;
+        if self.curve_count == 0 {
+            self.vertex_count = 0;
+            return;
         }
 
-        buffer
+        self.vertex_count = data[0].len() as u32;
+        assert_ne!(self.vertex_count, 0);
+
+        for (i, curve) in data.iter().enumerate() {
+            for (j, vert) in curve.iter().enumerate() {
+                self.vertices[MAX_CURVE_VERTICES * i + j] = *vert;
+            }
+        }
     }
 }
 
@@ -115,6 +151,7 @@ struct State<'a> {
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
+    curve_bind_groups: [wgpu::BindGroup; MAX_CURVE_COUNT],
     //
     app: Application,
 }
@@ -126,10 +163,7 @@ impl<'a> State<'a> {
         // The instance is a handle to our GPU
         // Backends::all => Vulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
-            #[cfg(target_arch = "wasm32")]
-            backends: wgpu::Backends::GL,
             ..Default::default()
         });
 
@@ -144,17 +178,14 @@ impl<'a> State<'a> {
             .await
             .unwrap();
 
+        let mut required_limits = wgpu::Limits::default();
+        required_limits.max_bind_groups = MAX_CURVE_COUNT as u32;
+
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
                     required_features: wgpu::Features::empty(),
-                    // WebGL doesn't support all of wgpu's features, so if
-                    // we're building for the web, we'll have to disable some.
-                    required_limits: if cfg!(target_arch = "wasm32") {
-                        wgpu::Limits::downlevel_webgl2_defaults()
-                    } else {
-                        wgpu::Limits::default()
-                    },
+                    required_limits,
                     label: None,
                     memory_hints: Default::default(),
                 },
@@ -195,10 +226,49 @@ impl<'a> State<'a> {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
 
+        let mut indices = vec![0; MAX_CURVE_COUNT * (MAX_CURVE_VERTICES - 1) * 2];
+        Curves::get_indices(indices.as_mut_slice());
+
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(&curves.get_indices()),
+            contents: bytemuck::cast_slice(&indices),
             usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let curve_buffers: [wgpu::Buffer; MAX_CURVE_COUNT] = std::array::from_fn(|i| {
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(format!("Curve Buffer {i}").as_str()),
+                contents: bytemuck::cast_slice(&COLORS),
+                usage: wgpu::BufferUsages::UNIFORM,
+            })
+        });
+
+        let curve_bind_group_layouts: [wgpu::BindGroupLayout; MAX_CURVE_COUNT] =
+            std::array::from_fn(|i| {
+                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some(format!("Curve Bind Group Layout {i}").as_str()),
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: true,
+                            min_binding_size: Some((size_of::<[f32; 4]>() as u64).try_into().unwrap()),
+                        },
+                        count: None,
+                    }],
+                })
+            });
+
+        let curve_bind_groups: [wgpu::BindGroup; MAX_CURVE_COUNT] = std::array::from_fn(|i| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some(format!("Curve Bind Group {i}").as_str()),
+                layout: &curve_bind_group_layouts[i],
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: curve_buffers[i].as_entire_binding(),
+                }],
+            })
         });
 
         let shader = device.create_shader_module(include_wgsl!("shader.wgsl"));
@@ -206,7 +276,8 @@ impl<'a> State<'a> {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[],
+                // bind_group_layouts: &curve_bind_group_layouts.iter().collect::<Vec<_>>(),
+                bind_group_layouts: &std::array::from_fn::<_, MAX_CURVE_COUNT, _>(|i| &curve_bind_group_layouts[i]),
                 push_constant_ranges: &[],
             });
 
@@ -233,7 +304,7 @@ impl<'a> State<'a> {
                 topology: wgpu::PrimitiveTopology::LineList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
+                cull_mode: None,
                 // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
                 polygon_mode: wgpu::PolygonMode::Fill,
                 // Requires Features::DEPTH_CLIP_CONTROL
@@ -261,6 +332,7 @@ impl<'a> State<'a> {
             render_pipeline,
             vertex_buffer,
             index_buffer,
+            curve_bind_groups,
             app: Application {
                 mouse_pos: None,
                 curves,
@@ -306,20 +378,27 @@ impl<'a> State<'a> {
 
         self.app.fps_lst.rotate_right(1);
         self.app.fps_lst[0] = fps;
-        self.app.fps_min = self.app.fps_lst.iter().copied().min_by(|a, b| 
-            match (a, b) {
+        self.app.fps_min = self
+            .app
+            .fps_lst
+            .iter()
+            .copied()
+            .min_by(|a, b| match (a, b) {
                 (x, _) if x.is_nan() => std::cmp::Ordering::Less,
                 (_, y) if y.is_nan() => std::cmp::Ordering::Greater,
                 _ => a.partial_cmp(b).unwrap(),
-            }
-        ).unwrap();
+            })
+            .unwrap();
         if self.app.fps.is_nan() {
             self.app.fps = fps;
         } else {
             self.app.fps = self.app.fps * 0.95 + fps * 0.05;
         }
 
-        print!("\rFramerate: {:.0} \t {:.0}        ", self.app.fps, self.app.fps_min);
+        print!(
+            "\rFramerate: {:.0} \t {:.0}        ",
+            self.app.fps, self.app.fps_min
+        );
         stdout().flush().unwrap();
 
         let dtheta = 60f32.to_radians() * dt;
@@ -335,11 +414,6 @@ impl<'a> State<'a> {
             &self.vertex_buffer,
             0,
             bytemuck::cast_slice(&self.app.curves.vertices),
-        );
-        self.queue.write_buffer(
-            &self.index_buffer,
-            0,
-            bytemuck::cast_slice(&self.app.curves.get_indices()),
         );
     }
 
@@ -387,8 +461,20 @@ impl<'a> State<'a> {
             pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-            for range in self.app.curves.get_ranges() {
-                pass.draw_indexed(range, 0, 0..1);
+            let mut ranges = vec![None; MAX_CURVE_COUNT];
+            self.app.curves.get_ranges(ranges.as_mut_slice());
+            for (i, range) in ranges.iter().enumerate() {
+                if range.is_none() {
+                    break;
+                }
+
+                pass.set_bind_group(0, &self.curve_bind_groups[i], &[]);
+            }
+            for range in ranges.iter() {
+                if range.is_none() {
+                    break;
+                }
+                pass.draw_indexed(range.as_ref().unwrap().clone(), 0, 0..1);
             }
         }
 
@@ -403,52 +489,48 @@ impl<'a> State<'a> {
 pub async fn run() {
     env_logger::init();
 
-    let curves = Curves {
-        vertices: vec![
+    let mut curves = Curves {
+        vertices: vec![Vertex::default(); MAX_CURVE_COUNT * MAX_CURVE_VERTICES],
+        vertex_count: 0,
+        curve_count: 0,
+    };
+
+    curves.write(&vec![
+        vec![
             Vertex {
                 position: [-0.0868241, 0.49240386],
-                color: 0,
             },
             Vertex {
                 position: [-0.49513406, 0.06958647],
-                color: 0,
             },
             Vertex {
                 position: [-0.21918549, -0.44939706],
-                color: 0,
             },
             Vertex {
                 position: [0.35966998, -0.3473291],
-                color: 0,
             },
             Vertex {
                 position: [0.44147372, 0.2347359],
-                color: 0,
             },
-            //
+        ],
+        vec![
             Vertex {
                 position: [-0.0968241, 0.59240386],
-                color: 1,
             },
             Vertex {
                 position: [-0.59513406, 0.07958647],
-                color: 1,
             },
             Vertex {
                 position: [-0.31918549, -0.54939706],
-                color: 1,
             },
             Vertex {
                 position: [0.45966998, -0.4473291],
-                color: 1,
             },
             Vertex {
                 position: [0.54147372, 0.3347359],
-                color: 1,
             },
         ],
-        curve_indices: vec![0, 5],
-    };
+    ]);
 
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new().build(&event_loop).unwrap();

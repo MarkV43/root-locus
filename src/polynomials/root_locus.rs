@@ -40,6 +40,10 @@ where
         }
     }
 
+    pub fn get_polys_mut(&mut self) -> (&mut Polynomial<F>, &mut Polynomial<F>) {
+        (&mut self.poly_a, &mut self.poly_b)
+    }
+
     #[must_use]
     pub const fn get_branches(&self) -> usize {
         self.branches
@@ -83,22 +87,27 @@ where
             .iter()
             .cloned()
             .map(|x| self.compute_gain(x).re)
-            .filter(|x| !x.is_nan())
+            .filter(|x| !x.is_nan() && x.is_sign_positive())
             .map(|x| NotNanFloat::new(x))
-            .filter(|x| x.0.is_sign_positive())
             .for_each(|x| {
                 future_gains.insert(x);
             });
 
-        // drop(intersections);
+        intersections
+            .iter()
+            .cloned()
+            .map(|x| self.compute_gain(x).re)
+            .filter(|x| !x.is_nan() && x.is_sign_positive())
+            .map(|x| NotNanFloat::new(x))
+            .for_each(|x| {
+                future_gains.insert(x);
+            });
 
         let mut k = min_gain;
         while k < max_gain {
             future_gains.insert(NotNanFloat::new(k));
             k = k * interval;
         }
-
-        // println!("{:?}", future_gains.first().unwrap().0);
 
         // Given the size of future_gains, resize self.roots again
         self.roots.resize(
@@ -108,9 +117,6 @@ where
 
         let mut old_roots = vec![Complex::from(F::zero()); self.branches];
         old_roots.copy_from_slice(&self.roots[..self.branches]);
-
-        // let mut rng = StdRng::seed_from_u64(4343);
-        // let mut rng = thread_rng();
 
         for (i, gain) in future_gains.iter().enumerate() {
             let poly = Polynomial::from_sum(F::one(), &self.poly_a, gain.0, &self.poly_b);
@@ -136,5 +142,17 @@ where
     #[must_use]
     pub const fn get_gains(&self) -> &BTreeMap<NotNanFloat<F>, usize> {
         &self.gains
+    }
+}
+
+impl<F: Float> Default for RootLocus<F> {
+    fn default() -> Self {
+        Self {
+            poly_a: Polynomial::new(vec![F::from(1.0).unwrap()]),
+            poly_b: Polynomial::new(vec![F::from(1.0).unwrap()]),
+            gains: BTreeMap::new(),
+            roots: Vec::new(),
+            branches: 0,
+        }
     }
 }

@@ -1,5 +1,5 @@
 use crate::rng::generate_rng;
-use macroquad::prelude::*;
+use macroquad::{window::Conf, prelude::*};
 use num::{Complex, ToPrimitive, Zero};
 use rust_lab::polynomials::{root_locus::RootLocus, roots::PolynomialRoot, Polynomial};
 use std::time::Instant;
@@ -11,6 +11,14 @@ enum Mode {
 }
 
 pub async fn mainloop() {
+    let _conf = Conf {
+        window_title: "Root Locus".to_string(),
+        window_width: 800,
+        window_height: 600,
+        fullscreen: false,
+        ..Default::default()
+    };
+
     const COLORS: [Color; 12] = [
         RED, GREEN, BLUE, YELLOW, PINK, BROWN, BEIGE, LIME, LIGHTGRAY, PURPLE, ORANGE, MAGENTA,
     ];

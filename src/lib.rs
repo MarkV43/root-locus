@@ -6,6 +6,8 @@ use num::Float;
 
 pub mod polynomials;
 pub mod transfer_functions;
+pub mod midware;
+pub mod rng;
 
 #[derive(PartialEq, Debug)]
 pub struct NotNanFloat<F: Float>(pub F);

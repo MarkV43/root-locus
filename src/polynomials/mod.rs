@@ -19,7 +19,7 @@ pub type Polynomial64 = Polynomial<f64>;
 pub fn conv<N: Num + Copy>(a: &[N], b: &[N], out: &mut [N]) {
     debug_assert!(a.len() + b.len() - 1 <= out.len());
 
-    out.iter_mut().for_each(|x| *x = N::zero());
+    out.fill(N::zero());
 
     for (i, &x) in a.iter().enumerate() {
         for (j, &y) in b.iter().enumerate() {
@@ -27,6 +27,22 @@ pub fn conv<N: Num + Copy>(a: &[N], b: &[N], out: &mut [N]) {
         }
     }
 }
+
+pub fn autoconv<N: Num + Copy>(a: &mut [N], b: &[N], na: usize) {
+    debug_assert!(na + b.len() - 1 <= a.len());
+
+    // Traverse backwards to avoid overwriting necessary values
+    for i in (0..na + b.len() - 1).rev() {
+        let mut sum = N::zero();
+        for j in 0..b.len() {
+            if i >= j && i - j < na {
+                sum = sum + a[i - j] * b[j];
+            }
+        }
+        a[i] = sum;
+    }
+}
+
 
 /// Removes trailing zeros from the end of a slice by returning another slice
 #[allow(dead_code)]
@@ -40,6 +56,8 @@ pub fn remove_trailing_zeros_vec<F: Zero>(vec: &mut Vec<F>) {
 }
 
 impl<F: Float> Polynomial<F> {
+    /// Creates a polynomial from a Vec.
+    /// Index `i` corresponds to the monomial of i-th power.
     #[must_use]
     pub fn new(mut vec: Vec<F>) -> Self {
         remove_trailing_zeros_vec(&mut vec);
@@ -79,7 +97,7 @@ impl<F: Float> Polynomial<F> {
         for root in roots.iter() {
             match *root {
                 PolynomialRoot::RealSingle(r) => {
-                    conv(&out_copy[..=i], &[-r, F::one()], &mut out);
+                    conv(&out_copy[..i+1], &[-r, F::one()], &mut out);
                     i += 1;
                 }
                 PolynomialRoot::ComplexPair(c) => {
@@ -88,7 +106,7 @@ impl<F: Float> Polynomial<F> {
                     //            ^^^^^              ^^^^^   ^^^^^   ^^^^^
                     // x² - (2 a) x + (a² + b²)
                     conv(
-                        &out_copy[..=i],
+                        &out_copy[..i+1],
                         &[
                             c.re.powi(2) + c.im.powi(2),
                             F::from(-2.0).unwrap() * c.re,
@@ -103,6 +121,41 @@ impl<F: Float> Polynomial<F> {
         }
 
         Self::new(out)
+    }
+
+    pub fn update_roots(&mut self, gain: F, roots: &[PolynomialRoot<F>]) {
+        let len = roots.iter().map(|x| match x {
+            PolynomialRoot::RealSingle(_) => 1,
+            PolynomialRoot::ComplexPair(_) => 2,
+        }).sum::<usize>() + 1;
+        self.0.fill(F::zero());
+        self.0.resize(len, F::zero());
+
+        self.0[0] = gain;
+
+        let mut i = 1;
+        for root in roots.iter() {
+            match *root {
+                PolynomialRoot::RealSingle(r) => {
+                    autoconv(&mut self.0, &[-r, F::one()], i);
+                    i += 1;
+                }
+                PolynomialRoot::ComplexPair(c) => {
+                    autoconv(
+                        &mut self.0,
+                        &[
+                            c.re.powi(2) + c.im.powi(2),
+                            F::from(-2.0).unwrap() * c.re,
+                            F::one(),
+                        ],
+                        i,
+                    );
+                    i += 2;
+                }
+            }
+        }
+
+        remove_trailing_zeros_vec(&mut self.0);
     }
 
     /// Creates a polynomial from the sum `x * a + y * b`
@@ -292,6 +345,72 @@ impl<F: Float> Sub for Polynomial<F> {
 mod tests {
     use super::*;
     use approx::relative_eq;
+
+    #[test]
+    fn conv_impulse() {
+        let a = vec![1.0, 2.0, 3.0];
+        let b = vec![1.0, 0.0];
+        let mut out = vec![0.0, 0.0, 0.0, 0.0];
+
+        conv(&a, &b, &mut out);
+        assert_eq!(out, vec![1.0, 2.0, 3.0, 0.0]);
+    }
+
+    #[test]
+    fn conv_short() {
+        let a = vec![1.0, 2.0, 3.0];
+        let b = vec![2.0, 1.0];
+        let mut out = vec![0.0, 0.0, 0.0, 0.0];
+
+        conv(&a, &b, &mut out);
+        assert_eq!(out, vec![2.0, 5.0, 8.0, 3.0]);
+    }
+
+    #[test]
+    fn conv_long() {
+        let a = vec![0.0, 1.0];
+        let b = vec![1.0, 1.0];
+        let c = vec![10.0, 1.0];
+        let mut out = vec![0.0, 0.0, 0.0, 0.0];
+
+        conv(&a, &b, &mut out);
+        let d = out.clone();
+        conv(&d[..3], &c, &mut out);
+
+        assert_eq!(out, vec![0.0, 10.0, 11.0, 1.0]);
+    }
+
+    #[test]
+    fn autoconv_impulse() {
+        let mut a = vec![1.0, 2.0, 3.0, 0.0];
+        let b = vec![1.0, 0.0];
+
+        autoconv(&mut a, &b, 3);
+        assert_eq!(a, vec![1.0, 2.0, 3.0, 0.0]);
+    }
+
+    #[test]
+    fn autoconv_short() {
+        let mut a = vec![1.0, 2.0, 3.0, 0.0];
+        let b = vec![2.0, 1.0];
+
+        autoconv(&mut a, &b, 3);
+        assert_eq!(a, vec![2.0, 5.0, 8.0, 3.0]);
+    }
+
+    #[test]
+    fn autoconv_long() {
+        let mut out = vec![1.0, 0.0, 0.0, 0.0];
+        let a = vec![0.0, 1.0];
+        let b = vec![1.0, 1.0];
+        let c = vec![10.0, 1.0];
+
+        autoconv(&mut out, &a, 1);
+        autoconv(&mut out, &b, 2);
+        autoconv(&mut out, &c, 3);
+
+        assert_eq!(out, vec![0.0, 10.0, 11.0, 1.0]);
+    }
 
     #[test]
     fn from_roots() {
