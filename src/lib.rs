@@ -21,6 +21,7 @@ impl<F: Float> NotNanFloat<F> {
 
 impl<F: Float> Eq for NotNanFloat<F> {}
 
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl<F: Float> PartialOrd for NotNanFloat<F> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.0.partial_cmp(&other.0)
@@ -30,6 +31,6 @@ impl<F: Float> PartialOrd for NotNanFloat<F> {
 impl<F: Float> Ord for NotNanFloat<F> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.partial_cmp(other)
-            .map_or_else(|| panic!("NotNanFloat was NaN"), |x| x)
+            .unwrap_or_else(|| panic!("NotNanFloat was NaN"))
     }
 }

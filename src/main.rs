@@ -3,12 +3,11 @@ mod plot;
 mod rng;
 
 use clap::{Parser, Subcommand};
-use num::{Signed, Zero};
 
 #[derive(Subcommand, Debug)]
 enum FrontEnd {
     Macroquad,
-    WGPU,
+    Wgpu,
 }
 
 /// Binary that draws a dynamic root-locus plot
@@ -48,7 +47,7 @@ fn main() {
     let args = Args::parse();
 
     match args.frontend {
-        FrontEnd::WGPU => pollster::block_on(plot::wgpu::run()),
+        FrontEnd::Wgpu => pollster::block_on(plot::wgpu::run()),
         FrontEnd::Macroquad => macroquad::Window::new("Root Locus", plot::macroquad::mainloop()),
     }
 }

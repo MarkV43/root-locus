@@ -22,7 +22,7 @@ fn vs_main(
 // Fragment shader
 
 struct CurveUniform {
-    color: vec3<f32>,
+    color: vec3<f32>,    // 3 - 3
 }
 
 @group(0) @binding(0)

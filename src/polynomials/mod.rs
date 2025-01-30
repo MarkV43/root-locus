@@ -94,10 +94,10 @@ impl<F: Float> Polynomial<F> {
         let mut out_copy = out.clone();
         let mut i = 0;
 
-        for root in roots.iter() {
+        for root in roots {
             match *root {
                 PolynomialRoot::RealSingle(r) => {
-                    conv(&out_copy[..i+1], &[-r, F::one()], &mut out);
+                    conv(&out_copy[..=i], &[-r, F::one()], &mut out);
                     i += 1;
                 }
                 PolynomialRoot::ComplexPair(c) => {
@@ -106,7 +106,7 @@ impl<F: Float> Polynomial<F> {
                     //            ^^^^^              ^^^^^   ^^^^^   ^^^^^
                     // x² - (2 a) x + (a² + b²)
                     conv(
-                        &out_copy[..i+1],
+                        &out_copy[..=i],
                         &[
                             c.re.powi(2) + c.im.powi(2),
                             F::from(-2.0).unwrap() * c.re,
@@ -134,7 +134,7 @@ impl<F: Float> Polynomial<F> {
         self.0[0] = gain;
 
         let mut i = 1;
-        for root in roots.iter() {
+        for root in roots {
             match *root {
                 PolynomialRoot::RealSingle(r) => {
                     autoconv(&mut self.0, &[-r, F::one()], i);
@@ -258,7 +258,7 @@ impl<F: Float + Display> Display for Polynomial<F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let terms = remove_trailing_zeros(self.get_terms());
         for (i, term) in terms.iter().enumerate().rev() {
-            write!(f, "{} x^{}", term, i)?;
+            write!(f, "{term} x^{i}")?;
             if i > 0 {
                 write!(f, " + ")?;
             }

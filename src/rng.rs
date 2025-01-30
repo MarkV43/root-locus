@@ -1,5 +1,7 @@
 use rand::{distributions::Standard, prelude::*};
 
+#[allow(clippy::module_name_repetitions, unused)]
+#[must_use]
 pub fn generate_rng<T>(count: usize) -> Vec<T>
 where
     Standard: Distribution<T>,

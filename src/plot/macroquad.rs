@@ -1,4 +1,4 @@
-use crate::rng::generate_rng;
+/* use crate::rng::generate_rng;
 use macroquad::{window::Conf, prelude::*};
 use num::{Complex, ToPrimitive, Zero};
 use rust_lab::polynomials::{root_locus::RootLocus, roots::PolynomialRoot, Polynomial};
@@ -8,10 +8,10 @@ enum Mode {
     Zoom,
     Interval,
     Precision,
-}
+} */
 
 pub async fn mainloop() {
-    let _conf = Conf {
+    /* let _conf = Conf {
         window_title: "Root Locus".to_string(),
         window_width: 800,
         window_height: 600,
@@ -398,5 +398,5 @@ pub async fn mainloop() {
         }
 
         next_frame().await
-    }
+    } */
 }
